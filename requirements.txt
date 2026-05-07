@@ -1,0 +1,12 @@
+# IEC 61850 ICD/CID Parser
+# Python >= 3.8 required
+
+# This project uses only Python standard library:
+# - xml.etree.ElementTree (XML parsing)
+# - json (JSON output)
+# - csv (CSV output)
+# - pathlib (path handling)
+# - collections (defaultdict)
+# - datetime (timestamps)
+
+# No external dependencies required
