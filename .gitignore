@@ -20,6 +20,13 @@ wheels/
 .installed.cfg
 *.egg
 
+# Package specific
+icd_parse/__pycache__/
+icd_parse/*.pyc
+
+# Backup files
+*.bak
+
 # Virtual environments
 venv/
 ENV/
