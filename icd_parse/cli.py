@@ -19,18 +19,19 @@ from icd_parse.utils import (
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(
-        description='IEC 61850 ICD/CID文件信息提取工具',
+        description='IEC 61850 ICD/CID/SCD文件信息提取工具',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例用法:
   python cli.py input/61850ICD                  # 摘要模式
+  python cli.py input/中科院.scd                # 解析单个SCD文件
   python cli.py input/61850ICD -m full          # 完整提取
   python cli.py input/61850ICD -m semantic      # 语义解析模式
   python cli.py --show-reference                # 显示缩写参考表
         """
     )
-    parser.add_argument('input_dir', nargs='?', default='input',
-                        help='输入目录路径 (默认: input)')
+    parser.add_argument('input_path', nargs='?', default='input',
+                        help='输入目录或文件路径 (默认: input)')
     parser.add_argument('-o', '--output', help='输出目录路径', default=None)
     parser.add_argument('-m', '--mode',
                         choices=['full', 'summary', 'stats', 'semantic'],
@@ -53,7 +54,7 @@ def main():
         return
 
     enable_semantic = not args.no_semantic
-    extractor = ICDExtractor(args.input_dir, args.output, enable_semantic=enable_semantic)
+    extractor = ICDExtractor(args.input_path, args.output, enable_semantic=enable_semantic)
 
     if args.mode == 'full':
         extractor.extract_and_save_separately()
@@ -70,6 +71,7 @@ def main():
         print("统计摘要")
         print("=" * 60)
         print(f"文件总数: {stats.get('total_files', 0)}")
+        print(f"IED总数: {stats.get('total_ieds', 0)}")
         print(f"逻辑设备总数: {stats.get('total_ldevices', 0)}")
         print(f"逻辑节点总数: {stats.get('total_lns', 0)}")
         print(f"数据集总数: {stats.get('total_datasets', 0)}")

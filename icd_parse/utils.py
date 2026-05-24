@@ -129,18 +129,18 @@ def generate_semantic_report(results):
     ln_class_stats = defaultdict(lambda: {'count': 0, 'semantic': None})
 
     for result in results:
-        ldevices = result.get('lDevices', {}).get('lDevices', [])
-        for ld in ldevices:
-            ln0 = ld.get('ln0', {})
-            if ln0 and ln0.get('lnClass'):
-                ln_class = ln0['lnClass']
-                ln_class_stats[ln_class]['count'] += 1
-                ln_class_stats[ln_class]['semantic'] = resolver.resolve_ln_class(ln_class)
-            for ln in ld.get('lns', []):
-                if ln.get('lnClass'):
-                    ln_class = ln['lnClass']
+        for ied in result.get('ieds', []):
+            for ld in ied.get('lDevices', []):
+                ln0 = ld.get('ln0', {})
+                if ln0 and ln0.get('lnClass'):
+                    ln_class = ln0['lnClass']
                     ln_class_stats[ln_class]['count'] += 1
                     ln_class_stats[ln_class]['semantic'] = resolver.resolve_ln_class(ln_class)
+                for ln in ld.get('lns', []):
+                    if ln.get('lnClass'):
+                        ln_class = ln['lnClass']
+                        ln_class_stats[ln_class]['count'] += 1
+                        ln_class_stats[ln_class]['semantic'] = resolver.resolve_ln_class(ln_class)
 
     fc_stats = defaultdict(lambda: {'count': 0, 'semantic': None})
     data_name_stats = defaultdict(lambda: {'count': 0, 'semantic': None})

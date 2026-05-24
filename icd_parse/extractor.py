@@ -13,26 +13,35 @@ from icd_parse.abbr_dict import ABBREVIATIONS, LN_CLASS_MAP, FC_DETAIL
 
 
 class ICDExtractor:
-    """ICD文件批量提取器"""
+    """ICD/CID/SCD文件批量提取器"""
 
     def __init__(self, input_dir, output_dir=None, enable_semantic=True):
-        self.input_dir = Path(input_dir)
+        self.input_path = Path(input_dir)
+        # 支持直接传入单个文件
+        self.is_single_file = self.input_path.is_file()
+        if self.is_single_file:
+            self.input_dir = self.input_path.parent
+        else:
+            self.input_dir = self.input_path
         self.output_dir = Path(output_dir) if output_dir else self.input_dir.parent / 'output'
         self.enable_semantic = enable_semantic
 
     def find_icd_files(self):
-        """查找所有ICD/CID文件"""
+        """查找所有ICD/CID/SCD文件"""
+        if self.is_single_file:
+            return [self.input_path]
+
         files = []
-        for ext in ['*.icd', '*.ICD', '*.cid', '*.CID']:
+        for ext in ['*.icd', '*.ICD', '*.cid', '*.CID', '*.scd', '*.SCD']:
             files.extend(self.input_dir.glob(ext))
-        for ext in ['**/*.icd', '**/*.ICD', '**/*.cid', '**/*.CID']:
+        for ext in ['**/*.icd', '**/*.ICD', '**/*.cid', '**/*.CID', '**/*.scd', '**/*.SCD']:
             files.extend(self.input_dir.glob(ext))
         return sorted(set(files))
 
     def extract_all_files(self):
         """提取所有文件的完整信息"""
         files = self.find_icd_files()
-        print(f"找到 {len(files)} 个ICD/CID文件")
+        print(f"找到 {len(files)} 个ICD/CID/SCD文件")
 
         results = []
         for i, file_path in enumerate(files, 1):
@@ -47,7 +56,7 @@ class ICDExtractor:
     def extract_and_save_separately(self):
         """提取并分别保存到同名JSON文件，保持输入目录结构"""
         files = self.find_icd_files()
-        print(f"找到 {len(files)} 个ICD/CID文件")
+        print(f"找到 {len(files)} 个ICD/CID/SCD文件")
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         success_count = 0
@@ -86,7 +95,7 @@ class ICDExtractor:
     def extract_summary_all(self):
         """提取所有文件的摘要信息"""
         files = self.find_icd_files()
-        print(f"找到 {len(files)} 个ICD/CID文件")
+        print(f"找到 {len(files)} 个ICD/CID/SCD文件")
 
         summaries = []
         for i, file_path in enumerate(files, 1):
@@ -108,7 +117,7 @@ class ICDExtractor:
         return output_path
 
     def save_summary_to_csv(self, summaries, file_name='icd_summary.csv'):
-        """保存摘要到CSV文件"""
+        """保存摘要到CSV文件（每个IED一行）"""
         self.output_dir.mkdir(parents=True, exist_ok=True)
         output_path = self.output_dir / file_name
 
@@ -116,19 +125,33 @@ class ICDExtractor:
             print("无数据可保存")
             return None
 
-        fieldnames = list(summaries[0].keys())
+        rows = []
+        for s in summaries:
+            file_name_val = s.get('file_name', '')
+            for ied in s.get('ieds', []):
+                row = {
+                    'file_name': file_name_val,
+                    'ied_name': ied.get('ied_name', ''),
+                    'ied_type': ied.get('ied_type', ''),
+                    'manufacturer': ied.get('manufacturer', ''),
+                    'ldevice_count': ied.get('ldevice_count', 0),
+                    'ln_count': ied.get('ln_count', 0),
+                    'dataset_count': ied.get('dataset_count', 0),
+                    'report_ctrl_count': ied.get('report_ctrl_count', 0),
+                    'gse_ctrl_count': ied.get('gse_ctrl_count', 0),
+                    'ln_classes': ','.join(ied.get('ln_classes', []))
+                }
+                rows.append(row)
 
+        if not rows:
+            print("无数据可保存")
+            return None
+
+        fieldnames = list(rows[0].keys())
         with open(output_path, 'w', encoding='utf-8-sig', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            for s in summaries:
-                row = {}
-                for k, v in s.items():
-                    if isinstance(v, list):
-                        row[k] = ','.join(v)
-                    else:
-                        row[k] = v
-                writer.writerow(row)
+            writer.writerows(rows)
 
         print(f"摘要已保存: {output_path}")
         return output_path
@@ -139,28 +162,37 @@ class ICDExtractor:
             return {}
 
         manufacturers = defaultdict(int)
-        for s in summaries:
-            mfr = s.get('manufacturer', 'Unknown')
-            manufacturers[mfr] += 1
-
-        ln_class_stats = defaultdict(int)
-        for s in summaries:
-            for ln_class in s.get('ln_classes', []):
-                ln_class_stats[ln_class] += 1
-
         ied_types = defaultdict(int)
+        ln_class_stats = defaultdict(int)
+        total_ldevices = 0
+        total_lns = 0
+        total_datasets = 0
+        total_report_controls = 0
+        total_gse_controls = 0
+
         for s in summaries:
-            ied_type = s.get('ied_type', 'Unknown')
-            ied_types[ied_type] += 1
+            for ied in s.get('ieds', []):
+                mfr = ied.get('manufacturer', 'Unknown')
+                manufacturers[mfr] += 1
+                ied_type = ied.get('ied_type', 'Unknown')
+                ied_types[ied_type] += 1
+                total_ldevices += ied.get('ldevice_count', 0)
+                total_lns += ied.get('ln_count', 0)
+                total_datasets += ied.get('dataset_count', 0)
+                total_report_controls += ied.get('report_ctrl_count', 0)
+                total_gse_controls += ied.get('gse_ctrl_count', 0)
+                for ln_class in ied.get('ln_classes', []):
+                    ln_class_stats[ln_class] += 1
 
         return {
             'total_files': len(summaries),
+            'total_ieds': sum(s.get('ied_count', 0) for s in summaries),
             'manufacturer_distribution': dict(manufacturers),
             'ied_type_distribution': dict(ied_types),
             'ln_class_distribution': dict(ln_class_stats),
-            'total_ldevices': sum(s.get('ldevice_count', 0) for s in summaries),
-            'total_lns': sum(s.get('ln_count', 0) for s in summaries),
-            'total_datasets': sum(s.get('dataset_count', 0) for s in summaries),
-            'total_report_controls': sum(s.get('report_ctrl_count', 0) for s in summaries),
-            'total_gse_controls': sum(s.get('gse_ctrl_count', 0) for s in summaries)
+            'total_ldevices': total_ldevices,
+            'total_lns': total_lns,
+            'total_datasets': total_datasets,
+            'total_report_controls': total_report_controls,
+            'total_gse_controls': total_gse_controls
         }

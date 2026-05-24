@@ -1,8 +1,9 @@
 """
-IEC 61850 ICD/CID 文件信息提取脚本 - 主入口
+IEC 61850 ICD/CID/SCD 文件信息提取脚本 - 主入口
 
 运行方式:
     python run.py input/61850ICD              # 摘要模式
+    python run.py input/中科院.scd            # 解析单个SCD文件
     python run.py input/61850ICD -m full      # 完整提取
     python run.py input/61850ICD -m semantic  # 语义解析
     python run.py --show-reference            # 显示缩写参考表

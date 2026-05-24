@@ -9,7 +9,7 @@ from icd_parse.abbr_resolver import AbbrResolver
 
 
 class ICDParser:
-    """IEC 61850 ICD/CID 文件解析器"""
+    """IEC 61850 ICD/CID/SCD 文件解析器"""
 
     NS = {'scl': 'http://www.iec.ch/61850/2003/SCL'}
 
@@ -145,86 +145,101 @@ class ICDParser:
 
         return {'subNetworks': subnetworks}
 
-    def extract_ied_info(self):
-        """提取IED基本信息"""
-        ied = self._find(self.root, 'IED')
-        if ied is None:
-            return {}
+    def extract_ieds_info(self):
+        """提取所有IED基本信息（SCD可能包含多个IED）"""
+        ieds = self._findall(self.root, 'IED')
+        if not ieds:
+            return []
 
-        info = {
-            'name': self._get_attr(ied, 'name'),
-            'desc': self._get_attr(ied, 'desc'),
-            'type': self._get_attr(ied, 'type'),
-            'manufacturer': self._get_attr(ied, 'manufacturer'),
-            'configVersion': self._get_attr(ied, 'configVersion'),
-            'originalSclRevision': self._get_attr(ied, 'originalSclRevision'),
-            'originalSclVersion': self._get_attr(ied, 'originalSclVersion')
-        }
+        result = []
+        for ied in ieds:
+            info = {
+                'name': self._get_attr(ied, 'name'),
+                'desc': self._get_attr(ied, 'desc'),
+                'type': self._get_attr(ied, 'type'),
+                'manufacturer': self._get_attr(ied, 'manufacturer'),
+                'configVersion': self._get_attr(ied, 'configVersion'),
+                'originalSclRevision': self._get_attr(ied, 'originalSclRevision'),
+                'originalSclVersion': self._get_attr(ied, 'originalSclVersion')
+            }
 
-        for private in self._findall(ied, 'Private'):
-            private_type = self._get_attr(private, 'type')
-            if private_type:
-                info.setdefault('private', []).append({
-                    'type': private_type,
-                    'content': private.text if private.text else ''
-                })
+            for private in self._findall(ied, 'Private'):
+                private_type = self._get_attr(private, 'type')
+                if private_type:
+                    info.setdefault('private', []).append({
+                        'type': private_type,
+                        'content': private.text if private.text else ''
+                    })
 
-        return info
+            result.append(info)
+
+        return result
 
     def extract_services_info(self):
-        """提取IED支持的服务列表"""
-        ied = self._find(self.root, 'IED')
-        if ied is None:
-            return {}
+        """提取所有IED支持的服务列表"""
+        ieds = self._findall(self.root, 'IED')
+        if not ieds:
+            return []
 
-        services = self._find(ied, 'Services')
-        if services is None:
-            return {}
-
-        svc_list = []
-        for child in services:
-            tag_name = child.tag.split('}')[-1] if '}' in child.tag else child.tag
-            svc_info = {'name': tag_name}
-            for attr, value in child.attrib.items():
-                svc_info[attr] = value
-            svc_list.append(svc_info)
-
-        return {'services': svc_list}
-
-    def extract_ldevice_info(self):
-        """提取逻辑设备(LDevice)信息"""
-        ied = self._find(self.root, 'IED')
-        if ied is None:
-            return {}
-
-        ldevices = []
-        for ap in self._findall(ied, 'AccessPoint'):
-            server = self._find(ap, 'Server')
-            if server is None:
+        result = []
+        for ied in ieds:
+            ied_name = self._get_attr(ied, 'name')
+            services = self._find(ied, 'Services')
+            if services is None:
+                result.append({'iedName': ied_name, 'services': []})
                 continue
 
-            for ld in self._findall(server, 'LDevice'):
-                ld_info = {
-                    'inst': self._get_attr(ld, 'inst'),
-                    'desc': self._get_attr(ld, 'desc'),
-                    'lnClass': self._get_attr(ld, 'lnClass'),
-                    'lnInst': self._get_attr(ld, 'lnInst')
-                }
+            svc_list = []
+            for child in services:
+                tag_name = child.tag.split('}')[-1] if '}' in child.tag else child.tag
+                svc_info = {'name': tag_name}
+                for attr, value in child.attrib.items():
+                    svc_info[attr] = value
+                svc_list.append(svc_info)
 
-                ln0 = self._find(ld, 'LN0')
-                if ln0:
-                    ld_info['ln0'] = self._extract_ln_info(ln0, is_ln0=True)
+            result.append({'iedName': ied_name, 'services': svc_list})
 
-                lns = []
-                for ln in self._findall(ld, 'LN'):
-                    lns.append(self._extract_ln_info(ln))
+        return result
 
-                if lns:
-                    ld_info['lns'] = lns
+    def extract_ldevice_info(self):
+        """提取所有IED的逻辑设备(LDevice)信息"""
+        ieds = self._findall(self.root, 'IED')
+        if not ieds:
+            return []
 
-                ldevices.append(ld_info)
+        result = []
+        for ied in ieds:
+            ied_name = self._get_attr(ied, 'name')
+            ldevices = []
+            for ap in self._findall(ied, 'AccessPoint'):
+                server = self._find(ap, 'Server')
+                if server is None:
+                    continue
 
-        return {'lDevices': ldevices}
+                for ld in self._findall(server, 'LDevice'):
+                    ld_info = {
+                        'inst': self._get_attr(ld, 'inst'),
+                        'desc': self._get_attr(ld, 'desc'),
+                        'lnClass': self._get_attr(ld, 'lnClass'),
+                        'lnInst': self._get_attr(ld, 'lnInst')
+                    }
+
+                    ln0 = self._find(ld, 'LN0')
+                    if ln0:
+                        ld_info['ln0'] = self._extract_ln_info(ln0, is_ln0=True)
+
+                    lns = []
+                    for ln in self._findall(ld, 'LN'):
+                        lns.append(self._extract_ln_info(ln))
+
+                    if lns:
+                        ld_info['lns'] = lns
+
+                    ldevices.append(ld_info)
+
+            result.append({'iedName': ied_name, 'lDevices': ldevices})
+
+        return result
 
     def _extract_ln_info(self, ln, is_ln0=False):
         """提取单个逻辑节点(LN)的详细信息"""
@@ -509,58 +524,99 @@ class ICDParser:
         if not self.parse():
             return None
 
+        ieds_info = self.extract_ieds_info()
+        services_info = self.extract_services_info()
+        ldevice_info = self.extract_ldevice_info()
+
+        # 将 IED 基本信息、服务、逻辑设备合并到一起
+        ieds = []
+        for i, ied_info in enumerate(ieds_info):
+            ied_name = ied_info.get('name', '')
+            ied_entry = dict(ied_info)
+            # 匹配对应的服务列表
+            for svc in services_info:
+                if svc.get('iedName') == ied_name:
+                    ied_entry['services'] = svc.get('services', [])
+                    break
+            # 匹配对应的逻辑设备
+            for ld_entry in ldevice_info:
+                if ld_entry.get('iedName') == ied_name:
+                    ied_entry['lDevices'] = ld_entry.get('lDevices', [])
+                    break
+            ieds.append(ied_entry)
+
         return {
             'file_path': str(self.file_path),
             'file_name': Path(self.file_path).name,
             'header': self.extract_header_info(),
             'communication': self.extract_communication_info(),
-            'ied': self.extract_ied_info(),
-            'services': self.extract_services_info(),
-            'lDevices': self.extract_ldevice_info(),
+            'ieds': ieds,
             'dataTypeTemplates': self.extract_datatype_templates()
         }
 
     def extract_summary(self):
-        """提取摘要信息"""
+        """提取摘要信息（包含所有IED）"""
         if not self.parse():
             return None
 
-        result = {
-            'file_name': Path(self.file_path).name,
-            'ied_name': '',
-            'ied_type': '',
-            'manufacturer': '',
-            'ldevice_count': 0,
-            'ln_count': 0,
-            'dataset_count': 0,
-            'report_ctrl_count': 0,
-            'gse_ctrl_count': 0,
-            'ln_classes': []
-        }
+        ieds = self._findall(self.root, 'IED')
 
-        ied = self._find(self.root, 'IED')
-        if ied:
-            result['ied_name'] = self._get_attr(ied, 'name')
-            result['ied_type'] = self._get_attr(ied, 'type')
-            result['manufacturer'] = self._get_attr(ied, 'manufacturer')
-
+        ied_summaries = []
         ln_classes_set = set()
-        if ied:
+        total_ldevice = 0
+        total_ln = 0
+        total_dataset = 0
+        total_report = 0
+        total_gse = 0
+
+        for ied in ieds:
+            ied_name = self._get_attr(ied, 'name')
+            ied_summary = {
+                'ied_name': ied_name,
+                'ied_type': self._get_attr(ied, 'type'),
+                'manufacturer': self._get_attr(ied, 'manufacturer'),
+                'ldevice_count': 0,
+                'ln_count': 0,
+                'dataset_count': 0,
+                'report_ctrl_count': 0,
+                'gse_ctrl_count': 0,
+                'ln_classes': []
+            }
+
+            ied_ln_classes = set()
             for ap in self._findall(ied, 'AccessPoint'):
                 server = self._find(ap, 'Server')
                 if server:
                     for ld in self._findall(server, 'LDevice'):
-                        result['ldevice_count'] += 1
+                        ied_summary['ldevice_count'] += 1
                         ln0 = self._find(ld, 'LN0')
                         if ln0:
-                            result['ln_count'] += 1
-                            ln_classes_set.add(self._get_attr(ln0, 'lnClass'))
-                            result['dataset_count'] += len(self._findall(ln0, 'DataSet'))
-                            result['report_ctrl_count'] += len(self._findall(ln0, 'ReportControl'))
-                            result['gse_ctrl_count'] += len(self._findall(ln0, 'GSEControl'))
+                            ied_summary['ln_count'] += 1
+                            ied_ln_classes.add(self._get_attr(ln0, 'lnClass'))
+                            ied_summary['dataset_count'] += len(self._findall(ln0, 'DataSet'))
+                            ied_summary['report_ctrl_count'] += len(self._findall(ln0, 'ReportControl'))
+                            ied_summary['gse_ctrl_count'] += len(self._findall(ln0, 'GSEControl'))
                         for ln in self._findall(ld, 'LN'):
-                            result['ln_count'] += 1
-                            ln_classes_set.add(self._get_attr(ln, 'lnClass'))
+                            ied_summary['ln_count'] += 1
+                            ied_ln_classes.add(self._get_attr(ln, 'lnClass'))
 
-        result['ln_classes'] = sorted(list(ln_classes_set))
-        return result
+            ied_summary['ln_classes'] = sorted(list(ied_ln_classes))
+            ln_classes_set.update(ied_ln_classes)
+            total_ldevice += ied_summary['ldevice_count']
+            total_ln += ied_summary['ln_count']
+            total_dataset += ied_summary['dataset_count']
+            total_report += ied_summary['report_ctrl_count']
+            total_gse += ied_summary['gse_ctrl_count']
+            ied_summaries.append(ied_summary)
+
+        return {
+            'file_name': Path(self.file_path).name,
+            'ied_count': len(ieds),
+            'ieds': ied_summaries,
+            'total_ldevice_count': total_ldevice,
+            'total_ln_count': total_ln,
+            'total_dataset_count': total_dataset,
+            'total_report_ctrl_count': total_report,
+            'total_gse_ctrl_count': total_gse,
+            'ln_classes': sorted(list(ln_classes_set))
+        }
